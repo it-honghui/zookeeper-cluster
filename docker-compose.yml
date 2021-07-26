@@ -1,0 +1,84 @@
+version: '3.5'
+# 给zk集群配置一个网络，网络名为zk-net
+networks:
+  zk-net:
+    name: zk-net
+# 配置zk集群的
+# container services下的每一个子配置都对应一个zk节点的docker container
+services:
+  zk1:
+    # docker container所使用的docker image
+    image: zookeeper
+    restart: always
+    hostname: zk1
+    container_name: zk1
+    # 配置docker container和宿主机的端口映射
+    ports:
+      - 2181:2181
+      - 8081:8080
+    # 配置docker container的环境变量
+    environment:
+      # 当前zk实例的id
+      ZOO_MY_ID: 1
+      # 整个zk集群的机器、端口列表
+      ZOO_SERVERS: server.1=0.0.0.0:2888:3888;2181 server.2=zk2:2888:3888;2181 server.3=zk3:2888:3888;2181
+    # 将docker container上的路径挂载到宿主机上 实现宿主机和docker container的数据共享
+    volumes:
+      - ./zk1/data:/data
+      - ./zk1/datalog:/datalog
+    # 当前docker container加入名为zk-net的隔离网络
+    networks:
+      - zk-net
+
+  zk2:
+    image: zookeeper
+    restart: always
+    hostname: zk2
+    container_name: zk2
+    ports:
+      - 2182:2181
+      - 8082:8080
+    environment:
+      ZOO_MY_ID: 2
+      ZOO_SERVERS: server.1=zk1:2888:3888;2181 server.2=0.0.0.0:2888:3888;2181 server.3=zk3:2888:3888;2181
+    volumes:
+      - ./zk2/data:/data
+      - ./zk2/datalog:/datalog
+    networks:
+      - zk-net
+
+  zk3:
+    image: zookeeper
+    restart: always
+    hostname: zk3
+    container_name: zk3
+    ports:
+      - 2183:2181
+      - 8083:8080
+    environment:
+      ZOO_MY_ID: 3
+      ZOO_SERVERS: server.1=zk1:2888:3888;2181 server.2=zk2:2888:3888;2181 server.3=0.0.0.0:2888:3888;2181
+    volumes:
+      - ./zk3/data:/data
+      - ./zk3/datalog:/datalog
+    networks:
+      - zk-net
+      
+  admin:
+    restart: always
+    image: apache/dubbo-admin
+    container_name: dubbo-admin
+    links:
+      - zk1:zk  #配置容器link名，可理解为别名
+    depends_on:
+      - zk1
+      - zk2
+      - zk3
+    ports:
+      - 8084:8080
+    environment:
+      - admin.registry.address=zookeeper://zk2:2181, zk1:2181, zk3:2181
+      - admin.config-center=zookeeper://zk2:2181, zk1:2181, zk3:2181
+      - admin.metadata-report.address=zookeeper://zk2:2181, zk1:2181, zk3:2181
+    networks:
+      - zk-net
